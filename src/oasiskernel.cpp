@@ -128,6 +128,7 @@ int main(int argc, char *argv[])
 		MatrixXd invw(k,k);
 		MatrixXd d(myn,1);
 		MatrixXd delta(myn,1);
+        MatrixXi rand_vec(n,1);
 		
 		if(!myrank)
 			{
@@ -189,16 +190,25 @@ int main(int argc, char *argv[])
 		/*create w by randomly selecting #s input indices*/
 		uint64_t s_ind[k]; 
 		uint64_t range  = n;
-		
-		if(!myrank)
-		{
-			for(int i=0; i< s; i++)
-					{
-							s_ind[i] = rand()%n; 
-					}
-                }
-
-                
+        if(!myrank)
+        {
+        for(int i=0; i<n; i++ )
+        {
+            rand_vec(i,0) = i;
+        }
+        for(int i=n-1; i>0; i-- )
+        {
+            int j = rand()%(i+1);
+            int tmp = rand_vec(j,0);
+            rand_vec(j,0) = rand_vec(i,0);
+            rand_vec(i,0) = tmp;
+        }
+        for(int i=0; i<s; i++)
+        {
+            s_ind[i] = rand_vec(i,0);
+        }
+        }
+                    
                         
                 
          MPI_Bcast(s_ind, s, MPI_UINT64_T, 0, MPI_COMM_WORLD); // data type for MPI
@@ -370,8 +380,8 @@ int main(int argc, char *argv[])
 		/* *****error computation***** */
 		double ts1,ts2;
 		ts1 =  MPI_Wtime();
-		vector<uint64_t> s_indSorted (s_ind,s_ind+s); 
-		sort (s_indSorted.begin(), s_indSorted.begin()+s);  
+		vector<uint64_t> s_indSorted (s_ind,s_ind+k);
+		sort (s_indSorted.begin(), s_indSorted.begin()+k);
 		ts2 =  MPI_Wtime();
 		if(!myrank)
 			{
@@ -382,7 +392,7 @@ int main(int argc, char *argv[])
 		ts1 =  MPI_Wtime();
 		if(!myrank)
 			printf( "\033[32;1mStart calculating error\033[0m\n");
-		int numerr= fmin(myn,err_countMax)/npes;
+		int numerr= err_countMax;
 
 		
 		int err_ind_i, err_ind_j;
@@ -393,7 +403,6 @@ int main(int argc, char *argv[])
 		 double finalerr[2];
 		 double tempa;
 		 double  tempb;
-		 double sumnormg=0;
 		 for(int i=0; i< numerr; i++)
 					{   
 						err_ind_i= rand()%myn; 
@@ -402,23 +411,19 @@ int main(int argc, char *argv[])
 						tempa = kernelf(A.col(err_ind_i+mystartid),A.col(err_ind_j+mystartid),sig);
 						tempb = C.row(err_ind_i)*invw*(C.row(err_ind_j).transpose());
 						sumerr [0] =  sumerr[0]+(tempa- tempb)*(tempa- tempb); // norm 2 error
-						sumerr[1]  = sumerr[1]+ abs((tempa- tempb)); // norm 1 error
-						sumnormg = sumnormg+tempa*tempa;
+						sumerr[1]  = sumerr[1]+ tempa*tempa; // norm 2 of actual kernel matrix
 					}						
-		 sumerr[0] = sumerr[0]/numerr;	
-		 sumerr[1] = sumerr[0]/sumnormg;	
+	
 		 MPI_Barrier(MPI_COMM_WORLD);								
 		 MPI_Allreduce(sumerr, finalerr, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);	
 		 ts2 =  MPI_Wtime();	
 		 if(!myrank)
 		 {
-			 finalerr[0] =  finalerr[0]/npes;
-			 finalerr[1] =  finalerr[1]/npes;
-			 printf("Average l2 Error =  %f\n",finalerr[0]);
-			 printf("Average normalized Error =  %f\n",finalerr[1]);
+			 printf("Average l2 error =  %f\n",finalerr[0]/(npes*numerr));
+			 printf("Average normalized error =  %f\n",finalerr[0]/finalerr[1]);
 			 printf( "\033[1;31mError computation time = %fs\033[0m\n",(ts2 - ts1) );
 			 cout<<"Sorted selected indices="<<endl;
-					  for(int i=0; i<s; i++){      
+					  for(int i=0; i<k; i++){
 						cout<<s_ind[i]<<" ";
 						}
 						cout<<endl;
