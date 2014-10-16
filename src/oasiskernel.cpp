@@ -130,6 +130,7 @@ int main(int argc, char *argv[])
 		MatrixXd delta(myn,1);
         MatrixXi rand_vec(n,1);
 		
+
 		if(!myrank)
 			{
 			printf( "\033[32;1mStart loading A from file\033[0m\n");
@@ -153,11 +154,6 @@ int main(int argc, char *argv[])
 					
 					tread2 = MPI_Wtime(); 
 					
-		if(!myrank)
-			{
-			cout<<"A= "<<endl;
-			cout<<A.block(0,0,1,100)<<endl;
-		}
 			
 			
 			if(!myrank)
@@ -222,16 +218,23 @@ int main(int argc, char *argv[])
 				w(i,j)= kernelf(A.col(s_ind[i]), A.col(s_ind[j]),sig);
 				}
 			}
+
 			
-			cout<<"w"<<endl;
-			cout<<w.block(0,0,s,s)<<endl;
+			//invw.block(0,0,s,s) = w.block(0,0,s,s);
+			//invw.block(0,0,s,s) = invw.block(0,0,s,s).inverse();
 			
-			invw.block(0,0,s,s) = w.block(0,0,s,s);
-			invw.block(0,0,s,s) = invw.block(0,0,s,s).inverse();
 			
-			cout<<"inverse w ="<<endl;
-			cout<<invw.block(0,0,s,s) <<endl;
-			
+			MatrixXd Dhatp = w.block(0,0,s,s);
+			JacobiSVD<MatrixXd> svd( w.block(0,0,s,s), ComputeThinU | ComputeThinV);
+
+			double  pinvtoler=1.e-8; // choose your tolerance wisely!
+			VectorXd singularValuesinv = svd.singularValues();
+			for ( int i=0; i<svd.singularValues().size(); ++i) {
+				if ( singularValuesinv(i) > pinvtoler )
+				 singularValuesinv(i)=1.0/singularValuesinv(i);
+				 else singularValuesinv(i)=0;
+			}
+			invw.block(0,0,s,s) = (svd.matrixU()*singularValuesinv.asDiagonal()*svd.matrixV().transpose());
 			
 		/*compute local C_s*/
 		for(int j=0; j< s; j++)
@@ -268,7 +271,7 @@ int main(int argc, char *argv[])
 		if(!myrank)
         {cout<<"Start selecting columns"<<endl;
 		}
-	     while (s<k)
+	     while (s<k && maxval_all<.000001)
 	     {
 	     
 						 /*compute delta*/
@@ -346,8 +349,6 @@ int main(int argc, char *argv[])
 						invw.block(s,0,1,s) = -sk*(qk.block(0,0,s,1).transpose());
 						invw(s,s) = sk;			
 
-					
-
 						/*update R */
 						
 					   
@@ -373,15 +374,18 @@ int main(int argc, char *argv[])
 		/*time elapsed*/
 		if(!myrank)
 			{
-				printf( "\033[1;31mElapsed time per col addition = %fs\033[0m\n",(t2 - t1)/(s-init_s) );
+				if(s-init_s>0)
+					printf( "\033[1;31mElapsed time per col addition = %fs\033[0m\n",(t2 - t1)/(s-init_s) );
 				printf( "\033[1;31mTotal time elapsed = %fs\033[0m\n",(t2 - tread1) );
 			}
 		
 		/* *****error computation***** */
 		double ts1,ts2;
 		ts1 =  MPI_Wtime();
-		vector<uint64_t> s_indSorted (s_ind,s_ind+k);
-		sort (s_indSorted.begin(), s_indSorted.begin()+k);
+		vector<uint64_t> s_indSorted (s_ind,s_ind+s);
+		sort (s_indSorted.begin(), s_indSorted.begin()+s);
+		
+					
 		ts2 =  MPI_Wtime();
 		if(!myrank)
 			{
@@ -403,6 +407,7 @@ int main(int argc, char *argv[])
 		 double finalerr[2];
 		 double tempa;
 		 double  tempb;
+		 
 		 for(int i=0; i< numerr; i++)
 					{   
 						err_ind_i= rand()%myn; 
@@ -419,16 +424,16 @@ int main(int argc, char *argv[])
 		 ts2 =  MPI_Wtime();	
 		 if(!myrank)
 		 {
+			 printf("l2 norm of error = %f\n l2 norm of data =  %f\n",finalerr[0],finalerr[1]);
 			 printf("Average l2 error =  %f\n",finalerr[0]/(npes*numerr));
 			 printf("Average normalized error =  %f\n",finalerr[0]/finalerr[1]);
 			 printf( "\033[1;31mError computation time = %fs\033[0m\n",(ts2 - ts1) );
-			 cout<<"Sorted selected indices="<<endl;
+			/* cout<<"Sorted selected indices="<<endl;
 					  for(int i=0; i<k; i++){
 						cout<<s_ind[i]<<" ";
 						}
-						cout<<endl;
-					}
-					
+						cout<<endl;*/
+			}
 
 	MPI_Finalize();
 
