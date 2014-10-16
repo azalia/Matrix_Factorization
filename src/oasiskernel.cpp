@@ -271,7 +271,7 @@ int main(int argc, char *argv[])
 		if(!myrank)
         {cout<<"Start selecting columns"<<endl;
 		}
-	     while (s<k && maxval_all<.000001)
+	     while (s<k && maxval_all<.00000001)
 	     {
 	     
 						 /*compute delta*/
